@@ -96,16 +96,48 @@ export default function App() {
 
   async function deleteExpense(id) { await setAndSaveExpenses(expenses.filter(e=>e.id!==id)); }
 
-  async function parseNote() {
+  function parseNote() {
     if (!noteText.trim()) return;
-    setNoteLoading(true); setNoteError(""); setParsed([]);
-    try {
-      const items = await aiParseNote(noteText, categories.map(c=>c.name).join(", "));
-      const today = new Date().toISOString().split("T")[0];
-      const withMeta = items.map((it,i)=>({...it,id:Date.now()+i,date:today,user:"You"}));
-      setParsed(withMeta); setSelected(withMeta.map(it=>it.id));
-    } catch(e) { setNoteError("Couldn't parse note. Make sure it has items and amounts."); }
-    setNoteLoading(false);
+    setNoteError(""); setParsed([]);
+    const today = new Date().toISOString().split("T")[0];
+    const lines = noteText.split("\n").map(l=>l.trim()).filter(Boolean);
+    const items = [];
+    const catMap = [
+      { cat:"Groceries",     words:["trader joe","costco","whole foods","safeway","grocery","market","food","produce","nick","bay market","ashland"] },
+      { cat:"Dining Out",    words:["coffee","cafe","restaurant","lunch","dinner","breakfast","smoothie","mcdonald","burger","pizza","sushi","taco","nalu","bluestone","paistia","pura vida","little lunch","alana"] },
+      { cat:"Transport",     words:["gas","parking","uber","lyft","ticket","fuel","washer fluid"] },
+      { cat:"Health",        words:["dr ","doctor","therapy","therapist","pt ","rx","prescription","vitamin","probiotic","creatine","supplement","medical","pharmacy","psych","seremolin","ucla"] },
+      { cat:"Entertainment", words:["sling","netflix","spotify","hulu","classpass","class pass","airbnb","hotel"] },
+      { cat:"Shopping",      words:["watch","slippers","phone case","shoes","clothes","clothing","amazon"] },
+      { cat:"Utilities",     words:["internet","electric","gas bill","water","squarespace"] },
+      { cat:"Health",        words:["golds","gym","gold's","sweat"] },
+      { cat:"Skincare",      words:["skincare","serum","cream","mani","pedi","manicure","pedicure"] },
+    ];
+    function guessCategory(desc) {
+      const lower = desc.toLowerCase();
+      for (const { cat, words } of catMap) {
+        if (words.some(w => lower.includes(w))) return cat;
+      }
+      return "Shopping";
+    }
+    for (const line of lines) {
+      const amountMatch = line.match(/\$\s*(\d+(?:\.\d{1,2})?)|\b(\d+(?:\.\d{1,2})?)\s*$/);
+      if (!amountMatch) continue;
+      const amount = parseFloat(amountMatch[1] || amountMatch[2]);
+      if (!amount || amount <= 0) continue;
+      let desc = line
+        .replace(/\$\s*\d+(?:\.\d{1,2})?/g, "")
+        .replace(/\b\d{1,2}\/\d{1,2}\b/g, "")
+        .replace(/[-\u2013\u2014|]/g, " ")
+        .replace(/\s+/g, " ").trim();
+      if (!desc) continue;
+      items.push({ id:Date.now()+items.length, description:desc, amount, category:guessCategory(desc), date:today, user:"You" });
+    }
+    if (items.length === 0) {
+      setNoteError("Couldn't find any items. Make sure each line has an amount like $10.");
+      return;
+    }
+    setParsed(items); setSelected(items.map(it=>it.id));
   }
 
   async function parseReceipt() {
@@ -292,7 +324,7 @@ export default function App() {
             <div style={S.card}>
               <label style={S.label}>Paste your note</label>
               <textarea value={noteText} onChange={e=>setNoteText(e.target.value)} placeholder={"Starbucks $6.50\nWhole Foods $94.20\nUber $12.00"} style={{...S.input,height:160,resize:"vertical",lineHeight:1.6}} />
-              <button style={{...S.btn(),marginTop:12}} onClick={parseNote} disabled={noteLoading}>{noteLoading?"🤖 Parsing…":"Extract Expenses"}</button>
+              <button style={{...S.btn(),marginTop:12}} onClick={parseNote} >"Extract Expenses"</button>
               {noteError&&<div style={{color:"#ff6b6b",fontSize:13,marginTop:8}}>{noteError}</div>}
             </div>
             {parsed.length>0&&(
